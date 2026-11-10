@@ -257,7 +257,7 @@ FORM.addEventListener('submit', function (ev) {
   var status = document.getElementById('pi-form-status');
   status.textContent = 'Submitting...';
   status.className = 'status';
-  fetch('/submit?token=' + encodeURIComponent(P.token), {
+  fetch('/submit?t=' + encodeURIComponent(P.token), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(collect())

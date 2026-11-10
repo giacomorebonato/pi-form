@@ -66,4 +66,9 @@ describe("renderFormPage — structure", () => {
     expect(html).toContain("Book details");
     expect(html).toContain("<h1");
   });
+
+  it("submits to /submit with the token under the t param", () => {
+    expect(html).toContain("/submit?t=");
+    expect(html).not.toContain("token=");
+  });
 });
