@@ -78,7 +78,8 @@ const CSS = `
 `;
 
 // Vanilla-JS field renderer. No backticks inside (TS template literal).
-const RENDERER = `
+// Exported for tests: test/renderer.test.ts evaluates it against a jsdom page.
+export const RENDERER = `
 var P = JSON.parse(document.getElementById('payload').textContent);
 var F = document.getElementById('pi-form-fields');
 var FORM = document.getElementById('pi-form-form');
@@ -154,7 +155,9 @@ function buildField(name, prop, required, container) {
     }
   } else if (type === 'boolean') {
     var line2 = el('div', { 'class': 'check-line' });
-    line2.appendChild(el('input', { type: 'checkbox' }));
+    var cb = el('input', { type: 'checkbox' });
+    if (prop.default === true) { cb.checked = true; }
+    line2.appendChild(cb);
     wrap.appendChild(line2);
   } else if (type === 'string' && prop.enum) {
     var sel = el('select');
@@ -162,6 +165,7 @@ function buildField(name, prop, required, container) {
     for (var j = 0; j < prop.enum.length; j++) {
       sel.appendChild(el('option', { value: prop.enum[j] }, prop.enum[j]));
     }
+    if (prop.default !== undefined && prop.default !== null) { sel.value = String(prop.default); }
     wrap.appendChild(sel);
   } else {
     var attrs = {};
@@ -183,7 +187,7 @@ function buildField(name, prop, required, container) {
   container.appendChild(wrap);
 }
 
-function valueOfField(fieldEl, prop) {
+function valueOfField(fieldEl, prop, required) {
   if (prop.type === 'object') {
     var inner = {};
     var fs = fieldEl.querySelector('fieldset');
@@ -192,10 +196,10 @@ function valueOfField(fieldEl, prop) {
     var kids = fs ? fs.querySelectorAll(':scope > .field') : [];
     for (var i = 0; i < kids.length; i++) {
       var name = kids[i].getAttribute('data-field');
-      var v = valueOfField(kids[i], innerProps[name]);
+      var v = valueOfField(kids[i], innerProps[name], false);
       if (v !== undefined) { inner[name] = v; saw = true; }
     }
-    return saw ? inner : undefined;
+    return saw ? inner : (required ? {} : undefined);
   }
   if (prop.type === 'array') {
     var arr = [];
@@ -228,16 +232,19 @@ function collect() {
   var kids = F.querySelectorAll(':scope > .field');
   for (var i = 0; i < kids.length; i++) {
     var name = kids[i].getAttribute('data-field');
-    var v = valueOfField(kids[i], props[name]);
+    var v = valueOfField(kids[i], props[name], req.indexOf(name) !== -1);
     if (v !== undefined) { data[name] = v; }
   }
   return data;
 }
 
 function showErrors(errors) {
-  var props = P.schema.properties || {};
+  var all = F.querySelectorAll('.field');
   for (var name in errors) {
-    var f = F.querySelector('.field[data-field="' + name + '"]');
+    var f = null;
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute('data-field') === name) { f = all[i]; break; }
+    }
     if (!f) { continue; }
     var old = f.querySelector('.err');
     if (old) { old.remove(); }

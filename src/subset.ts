@@ -65,11 +65,13 @@ const REJECTED_KEYWORDS = [
   "uniqueItems",
   "minItems",
   "maxItems",
+  "const",
   "dependencies",
   "dependentSchemas",
 ] as const;
 
 const SCALAR_TYPES = new Set(["string", "number", "integer", "boolean"]);
+const RESERVED_PROPERTY_NAMES = new Set(["__proto__", "constructor", "prototype"]);
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -92,8 +94,16 @@ function checkStringConstraints(p: Record<string, unknown>, path: string, errors
       errors.push(`${path}: ${key} must be a number`);
     }
   }
-  if ("pattern" in p && typeof p.pattern !== "string") {
-    errors.push(`${path}: pattern must be a string`);
+  if ("pattern" in p) {
+    if (typeof p.pattern !== "string") {
+      errors.push(`${path}: pattern must be a string`);
+    } else {
+      try {
+        new RegExp(p.pattern);
+      } catch {
+        errors.push(`${path}: pattern is not a valid regular expression`);
+      }
+    }
   }
 }
 
@@ -213,13 +223,23 @@ function checkObjectNode(
   }
 
   for (const [name, child] of Object.entries(properties)) {
+    if (RESERVED_PROPERTY_NAMES.has(name)) {
+      errors.push(`properties.${name}: reserved property name "${name}"`);
+      continue;
+    }
     const childPath = depth === 0 ? `properties.${name}` : `${path}.properties.${name}`;
     checkProperty(child, childPath, depth, errors);
   }
 
-  if ("required" in node && Array.isArray(node.required)) {
+  if ("required" in node && !Array.isArray(node.required)) {
+    errors.push("required must be an array of strings");
+  } else if ("required" in node) {
     for (const entry of node.required) {
-      if (typeof entry === "string" && !(entry in properties)) {
+      if (typeof entry !== "string") {
+        errors.push("required must be an array of strings");
+        break;
+      }
+      if (!(entry in properties)) {
         errors.push(`required: unknown property "${entry}"`);
       }
     }

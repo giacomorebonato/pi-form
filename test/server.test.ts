@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { startForm } from "../src/server.js";
+import { fieldErrors, startForm } from "../src/server.js";
 
 const schema = {
   type: "object",
@@ -25,6 +25,17 @@ async function makeForm(overrides: Record<string, unknown> = {}) {
   handles.push(handle);
   return handle;
 }
+
+describe("fieldErrors", () => {
+  it("keeps errors for prototype-chain property names", () => {
+    expect(fieldErrors([{ path: ["constructor"], message: "required" }])).toEqual({
+      constructor: "required",
+    });
+    expect(fieldErrors([{ path: ["toString"], message: "bad" }])).toEqual({
+      toString: "bad",
+    });
+  });
+});
 
 describe("startForm — serving the page", () => {
   it("GET with correct token returns the form page", async () => {

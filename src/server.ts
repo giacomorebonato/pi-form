@@ -53,11 +53,11 @@ async function readBody(req: IncomingMessage): Promise<Buffer | null> {
   });
 }
 
-function fieldErrors(issues: Array<{ path: PropertyKey[]; message: string }>): Record<string, string> {
+export function fieldErrors(issues: Array<{ path: PropertyKey[]; message: string }>): Record<string, string> {
   const errors: Record<string, string> = {};
   for (const issue of issues) {
     const key = issue.path.length > 0 ? String(issue.path[0]) : "_";
-    if (!(key in errors)) {
+    if (!Object.hasOwn(errors, key)) {
       errors[key] = issue.message;
     }
   }

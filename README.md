@@ -73,7 +73,7 @@ per-field errors from server-side Zod validation and never reach the agent.
 
 | Feature | Form rendering |
 |---|---|
-| `string` (+ `minLength`, `maxLength`, `pattern`) | text input with native hints |
+| `string` (+ `minLength`, `maxLength`, `pattern`) | text input (Zod re-validates server-side) |
 | `number`, `integer` (+ `minimum`, `maximum`) | number input |
 | `boolean` | checkbox |
 | string `enum` | select |
@@ -109,4 +109,5 @@ Manual check: `pi -e "$(pwd)/index.ts"` and ask the agent to use
 Layout: `index.ts` (extension entry, `request_input` tool) · `src/subset.ts`
 (schema subset checker) · `src/schema-to-zod.ts` (Zod conversion) ·
 `src/form-html.ts` (self-contained form page) · `src/server.ts` (localhost
-form server) · `src/open-browser.ts` (default-browser opener).
+form server) · `src/server-types.ts` (shared types) · `src/open-browser.ts`
+(default-browser opener).

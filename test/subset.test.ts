@@ -174,6 +174,32 @@ describe("checkSupportedSchema — enums and required", () => {
       checkSupportedSchema({ type: "object", properties: { a: { type: "string" } }, required: ["bogus"] })
     ).toEqual({ ok: false, errors: ['required: unknown property "bogus"'] });
   });
+  it("rejects invalid pattern regex, reserved property names, non-array required and const", () => {
+    expect(checkSupportedSchema({ type: "object", properties: { x: { type: "string", pattern: "[" } } })).toEqual({
+      ok: false,
+      errors: ["properties.x: pattern is not a valid regular expression"],
+    });
+    expect(checkSupportedSchema({ type: "object", properties: { constructor: { type: "string" } } })).toEqual({
+      ok: false,
+      errors: ['properties.constructor: reserved property name "constructor"'],
+    });
+    expect(
+      checkSupportedSchema(
+        JSON.parse('{"type":"object","properties":{"__proto__":{"type":"string"}}}')
+      )
+    ).toEqual({
+      ok: false,
+      errors: ['properties.__proto__: reserved property name "__proto__"'],
+    });
+    expect(checkSupportedSchema({ type: "object", properties: { a: { type: "string" } }, required: "a" })).toEqual({
+      ok: false,
+      errors: ["required must be an array of strings"],
+    });
+    expect(checkSupportedSchema({ type: "object", properties: { a: { type: "string", const: "yes" } } })).toEqual({
+      ok: false,
+      errors: ['properties.a: unsupported keyword "const"'],
+    });
+  });
   it("rejects non-numeric constraint values and misused enum", () => {
     expect(checkSupportedSchema({ type: "object", properties: { x: { type: "string", minLength: "3" } } })).toEqual({
       ok: false,
