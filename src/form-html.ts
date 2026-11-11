@@ -56,6 +56,10 @@ const CSS = `
     border: 1px solid #d6d3d1; border-radius: 6px;
   }
   input[type="checkbox"] { display: inline-block; width: auto; }
+  input[type="date"] { width: fit-content; min-width: 170px; }
+  .range-line { display: flex; gap: 10px; align-items: center; }
+  .range-line input { flex: 1; padding: 0; }
+  .range-val { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; min-width: 3ch; text-align: right; }
   .check-line { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 4px 0; }
   .check-line label { margin: 0; font-weight: 400; }
   .row { display: flex; gap: 8px; margin: 6px 0; }
@@ -100,6 +104,71 @@ function numberAttrs(prop) {
   if (typeof prop.minimum === 'number') { a.min = prop.minimum; }
   if (typeof prop.maximum === 'number') { a.max = prop.maximum; }
   return a;
+}
+
+var ISO_DATE = /^\\d{4}-\\d{2}-\\d{2}$/;
+
+/** Build the input control for one scalar property: checkbox line for
+ * boolean, select for enum, date picker for format:"date", slider with live
+ * readout for x-widget:"range" on a bounded integer, else text/number.
+ * Shared by top-level fields and (later) table cells. */
+function buildScalarControl(prop, required) {
+  if (prop.type === 'boolean') {
+    var line = el('div', { 'class': 'check-line' });
+    var cb = el('input', { type: 'checkbox' });
+    if (prop.default === true) { cb.checked = true; }
+    line.appendChild(cb);
+    return line;
+  }
+  if (prop.type === 'string' && prop.enum) {
+    var sel = el('select');
+    if (!required) { sel.appendChild(el('option', { value: '' }, '')); }
+    for (var i = 0; i < prop.enum.length; i++) {
+      sel.appendChild(el('option', { value: prop.enum[i] }, prop.enum[i]));
+    }
+    if (prop.default !== undefined && prop.default !== null) { sel.value = String(prop.default); }
+    return sel;
+  }
+  if (prop.type === 'string' && prop.format === 'date') {
+    var dAttrs = { type: 'date' };
+    if (typeof prop.default === 'string' && ISO_DATE.test(prop.default)) { dAttrs.value = prop.default; }
+    if (required) { dAttrs.required = 'required'; }
+    return el('input', dAttrs);
+  }
+  if (
+    prop['x-widget'] === 'range' &&
+    prop.type === 'integer' &&
+    typeof prop.minimum === 'number' &&
+    typeof prop.maximum === 'number'
+  ) {
+    var rLine = el('div', { 'class': 'range-line' });
+    var slider = el('input', { type: 'range', min: prop.minimum, max: prop.maximum, step: '1' });
+    var start = (prop.default !== undefined && prop.default !== null) ? Number(prop.default) : prop.minimum;
+    if (!(start >= prop.minimum)) { start = prop.minimum; }
+    if (!(start <= prop.maximum)) { start = prop.maximum; }
+    slider.value = String(start);
+    var readout = el('output', { 'class': 'range-val' }, String(start));
+    slider.addEventListener('input', function () { readout.textContent = slider.value; });
+    if (required) { slider.setAttribute('required', 'required'); }
+    rLine.appendChild(slider);
+    rLine.appendChild(readout);
+    return rLine;
+  }
+  var attrs = {};
+  if (prop.type === 'integer') { attrs.type = 'number'; attrs.step = '1'; }
+  else if (prop.type === 'number') { attrs.type = 'number'; attrs.step = 'any'; }
+  else { attrs.type = 'text'; }
+  if (typeof prop.minLength === 'number') { attrs.minlength = prop.minLength; }
+  if (typeof prop.maxLength === 'number') { attrs.maxlength = prop.maxLength; }
+  if (prop.pattern) { attrs.pattern = prop.pattern; }
+  if (prop.type === 'integer' || prop.type === 'number') {
+    var na = numberAttrs(prop);
+    for (var nk in na) { attrs[nk] = na[nk]; }
+  }
+  if (required) { attrs.required = 'required'; }
+  var input = el('input', attrs);
+  if (prop.default !== undefined && prop.default !== null) { input.value = String(prop.default); }
+  return input;
 }
 
 function addRemoveButton(row) {
@@ -154,35 +223,11 @@ function buildField(name, prop, required, container) {
       wrap.appendChild(add);
     }
   } else if (type === 'boolean') {
-    var line2 = el('div', { 'class': 'check-line' });
-    var cb = el('input', { type: 'checkbox' });
-    if (prop.default === true) { cb.checked = true; }
-    line2.appendChild(cb);
-    wrap.appendChild(line2);
+    wrap.appendChild(buildScalarControl(prop, required));
   } else if (type === 'string' && prop.enum) {
-    var sel = el('select');
-    if (!required) { sel.appendChild(el('option', { value: '' }, '')); }
-    for (var j = 0; j < prop.enum.length; j++) {
-      sel.appendChild(el('option', { value: prop.enum[j] }, prop.enum[j]));
-    }
-    if (prop.default !== undefined && prop.default !== null) { sel.value = String(prop.default); }
-    wrap.appendChild(sel);
+    wrap.appendChild(buildScalarControl(prop, required));
   } else {
-    var attrs = {};
-    if (type === 'integer') { attrs.type = 'number'; attrs.step = '1'; }
-    else if (type === 'number') { attrs.type = 'number'; attrs.step = 'any'; }
-    else { attrs.type = 'text'; }
-    if (typeof prop.minLength === 'number') { attrs.minlength = prop.minLength; }
-    if (typeof prop.maxLength === 'number') { attrs.maxlength = prop.maxLength; }
-    if (prop.pattern) { attrs.pattern = prop.pattern; }
-    if (type === 'integer' || type === 'number') {
-      var na = numberAttrs(prop);
-      for (var nk in na) { attrs[nk] = na[nk]; }
-    }
-    if (required) { attrs.required = 'required'; }
-    var input = el('input', attrs);
-    if (prop.default !== undefined && prop.default !== null) { input.value = String(prop.default); }
-    wrap.appendChild(input);
+    wrap.appendChild(buildScalarControl(prop, required));
   }
   container.appendChild(wrap);
 }

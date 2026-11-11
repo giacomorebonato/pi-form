@@ -77,3 +77,42 @@ describe("renderer — error display", () => {
     expect(document.querySelector(".err")?.textContent).toBe("missing");
   });
 });
+
+describe("renderer — date and range controls", () => {
+  it("renders a date input prefilled from default", () => {
+    mount({ go_live: { type: "string", format: "date", default: "2026-03-01" } });
+    const input = document.querySelector("input") as HTMLInputElement;
+    expect(input.type).toBe("date");
+    expect(input.value).toBe("2026-03-01");
+  });
+
+  it("renders a range slider with min/max and live readout", () => {
+    mount({ certainty: { type: "integer", minimum: 0, maximum: 100, "x-widget": "range", default: 60 } });
+    const input = document.querySelector("input[type=range]") as HTMLInputElement;
+    expect(input.min).toBe("0");
+    expect(input.max).toBe("100");
+    const out = document.querySelector("output.range-val") as HTMLOutputElement;
+    expect(out.textContent).toBe("60");
+    input.value = "75";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(out.textContent).toBe("75");
+  });
+
+  it("submits the range value as a number", async () => {
+    mount({ certainty: { type: "integer", minimum: 0, maximum: 100, "x-widget": "range", default: 60 } });
+    const calls = submitWith({ status: 200, body: { ok: true, data: {} } });
+    await tick();
+    expect(JSON.parse(calls[0].body).certainty).toBe(60);
+  });
+
+  it("keeps format:\"email\" and enum strings as text/select", () => {
+    mount({ e: { type: "string", format: "email" }, s: { type: "string", enum: ["a", "b"] } });
+    expect(document.querySelector("input:not([type=range])")!.type).toBe("text");
+    expect(document.querySelector("select")).toBeTruthy();
+  });
+
+  it("leaves a non-ISO date default empty (no garbage prefill)", () => {
+    mount({ go_live: { type: "string", format: "date", default: "03/01/2026" } });
+    expect((document.querySelector("input") as HTMLInputElement).value).toBe("");
+  });
+});
