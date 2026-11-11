@@ -116,3 +116,105 @@ describe("renderer — date and range controls", () => {
     expect((document.querySelector("input") as HTMLInputElement).value).toBe("");
   });
 });
+
+describe("renderer — table arrays", () => {
+  const tableProp = {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        environment: { type: "string", enum: ["staging", "canary", "production"], description: "Environment" },
+        go_live: { type: "string", format: "date" },
+        certainty: { type: "integer", minimum: 0, maximum: 100, "x-widget": "range", description: "Certainty (%)" },
+        notify: { type: "boolean", description: "Notify team" },
+      },
+      required: ["environment"],
+    },
+    default: [
+      { environment: "staging", go_live: "2026-03-01", certainty: 80 },
+      { environment: "canary", certainty: 50, notify: true },
+    ],
+  };
+  const tableNoDefault = { ...tableProp, default: undefined };
+
+  it("builds thead labels from descriptions with key fallback", () => {
+    mount({ rows: tableProp });
+    const ths = [...document.querySelectorAll("th")];
+    expect(ths.map((t) => t.textContent)).toEqual(["Environment", "go_live", "Certainty (%)", "Notify team"]);
+  });
+
+  it("seeds tbody from default rows and prefills cells", () => {
+    mount({ rows: tableProp });
+    const trs = document.querySelectorAll("tbody tr");
+    expect(trs.length).toBe(2);
+    const first = trs[0].querySelector('td[data-col="environment"] select') as HTMLSelectElement;
+    expect(first.value).toBe("staging");
+    expect((trs[0].querySelector('td[data-col="go_live"] input') as HTMLInputElement).value).toBe("2026-03-01");
+    const range = trs[0].querySelector('td[data-col="certainty"] input') as HTMLInputElement;
+    expect(range.type).toBe("range");
+    expect(range.value).toBe("80");
+    expect(trs[0].querySelector('td[data-col="certainty"] output.range-val')!.textContent).toBe("80");
+  });
+
+  it("seeds one empty row when no default", () => {
+    mount({ rows: tableNoDefault });
+    expect(document.querySelectorAll("tbody tr").length).toBe(1);
+  });
+
+  it("add/remove row buttons work", () => {
+    mount({ rows: tableProp });
+    (document.querySelector(".btn-add") as HTMLElement).click();
+    expect(document.querySelectorAll("tbody tr").length).toBe(3);
+    (document.querySelector("td.action .btn-remove") as HTMLElement).click();
+    expect(document.querySelectorAll("tbody tr").length).toBe(2);
+  });
+
+  it("collects typed row values", async () => {
+    mount({ rows: tableProp });
+    const calls = submitWith({ status: 200, body: { ok: true, data: {} } });
+    await tick();
+    expect(JSON.parse(calls[0].body)).toEqual({
+      rows: [
+        { environment: "staging", go_live: "2026-03-01", certainty: 80, notify: false },
+        { environment: "canary", certainty: 50, notify: true },
+      ],
+    });
+  });
+
+  it("skips a row whose cells are all empty (emptiable columns only)", async () => {
+    // Columns a cell can leave untouched: text and date. A required enum
+    // select (auto-first-option) or range slider always has a value, so a
+    // row with those columns can never be "all empty" — native semantics.
+    mount({
+      rows: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            environment: { type: "string", description: "Environment" },
+            go_live: { type: "string", format: "date" },
+          },
+        },
+      },
+    });
+    (document.querySelector(".btn-add") as HTMLElement).click(); // empty second row
+    const calls = submitWith({ status: 200, body: { ok: true, data: {} } });
+    await tick();
+    expect(JSON.parse(calls[0].body)).toEqual({ rows: [] });
+  });
+
+  it("collects a boolean-only unchecked row as {notify: false}", async () => {
+    mount({
+      rows: {
+        type: "array",
+        items: { type: "object", properties: { notify: { type: "boolean" } } },
+      },
+    });
+    (document.querySelector(".btn-add") as HTMLElement).click(); // untouched row: checkbox unchecked
+    const calls = submitWith({ status: 200, body: { ok: true, data: {} } });
+    await tick();
+    // Both the seeded empty row and the added row submit as {notify: false}:
+    // a boolean cell is never "empty", so such rows are always kept.
+    expect(JSON.parse(calls[0].body)).toEqual({ rows: [{ notify: false }, { notify: false }] });
+  });
+});

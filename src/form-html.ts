@@ -39,6 +39,8 @@ const CSS = `
     body { background: #1c1917; color: #f5f5f4; }
     .card { background: #292524; border-color: #44403c; }
     input, select, button { background: #1c1917; border-color: #57534e; color: #f5f5f4; }
+    .pi-table th { color: #a8a29e; border-bottom-color: #44403c; }
+    .pi-table td { border-bottom-color: #44403c; }
   }
   .card {
     max-width: 640px; margin: 0 auto; background: #fff;
@@ -62,6 +64,14 @@ const CSS = `
   .range-val { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; min-width: 3ch; text-align: right; }
   .check-line { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 4px 0; }
   .check-line label { margin: 0; font-weight: 400; }
+  .table-scroll { overflow-x: auto; margin: 6px 0 10px; }
+  .pi-table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .pi-table th { text-align: left; font-size: 12px; font-weight: 600; color: #78716c; padding: 6px 8px; border-bottom: 1px solid #d6d3d1; white-space: nowrap; }
+  .pi-table td { padding: 6px 8px; border-bottom: 1px solid #e7e5e4; vertical-align: middle; }
+  .pi-table td .check-line { margin: 0; }
+  .pi-table input, .pi-table select { width: auto; min-width: 120px; padding: 6px 8px; }
+  .pi-table .range-line { min-width: 150px; }
+  .pi-table td.action { width: 1%; white-space: nowrap; text-align: right; }
   .row { display: flex; gap: 8px; margin: 6px 0; }
   .row input { flex: 1; }
   .btn-remove { padding: 4px 10px; }
@@ -177,6 +187,72 @@ function addRemoveButton(row) {
   row.appendChild(b);
 }
 
+/** Shared scalar valueOf: works on a field wrap, a table cell, any
+ * element scope containing the control. Empty string/number → undefined;
+ * integers/numbers → Number; booleans → always the checkbox state. */
+function scalarValueOf(scopeEl, prop) {
+  if (prop.type === 'boolean') {
+    var cb = scopeEl.querySelector('input[type="checkbox"]');
+    return cb ? cb.checked : undefined;
+  }
+  var input = scopeEl.querySelector('input, select');
+  if (!input || input.value === '') { return undefined; }
+  if (prop.type === 'integer' || prop.type === 'number') { return Number(input.value); }
+  return input.value;
+}
+
+function buildTableRow(itemProps, reqList, defaults) {
+  var tr = el('tr', {});
+  for (var col in itemProps) {
+    var td = el('td', { 'data-col': col });
+    var cellProp = itemProps[col];
+    if (defaults && defaults[col] !== undefined && defaults[col] !== null) {
+      cellProp = {};
+      for (var k in itemProps[col]) { cellProp[k] = itemProps[col][k]; }
+      cellProp.default = defaults[col];
+    }
+    td.appendChild(buildScalarControl(cellProp, reqList.indexOf(col) !== -1));
+    tr.appendChild(td);
+  }
+  var action = el('td', { 'class': 'action' });
+  var rm = el('button', { type: 'button', 'class': 'btn-remove', text: 'x' });
+  rm.addEventListener('click', function () { tr.remove(); });
+  action.appendChild(rm);
+  tr.appendChild(action);
+  return tr;
+}
+
+function buildTableField(name, prop, wrap) {
+  var itemProps = prop.items.properties || {};
+  var reqList = prop.items.required || [];
+  var scroll = el('div', { 'class': 'table-scroll' });
+  var table = el('table', { 'class': 'pi-table', 'data-array': name, 'data-kind': 'object-array' });
+  var thead = el('thead');
+  var hrow = el('tr');
+  for (var c in itemProps) {
+    hrow.appendChild(el('th', { 'data-col': c }, labelFor(c, itemProps[c])));
+  }
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+  var tbody = el('tbody');
+  table.appendChild(tbody);
+  var defs = Array.isArray(prop.default) ? prop.default : null;
+  if (defs && defs.length > 0) {
+    for (var i = 0; i < defs.length; i++) {
+      tbody.appendChild(buildTableRow(itemProps, reqList, defs[i]));
+    }
+  } else {
+    tbody.appendChild(buildTableRow(itemProps, reqList, null));
+  }
+  scroll.appendChild(table);
+  wrap.appendChild(scroll);
+  var add = el('button', { type: 'button', 'class': 'btn-add', text: 'Add row' });
+  add.addEventListener('click', function () {
+    tbody.appendChild(buildTableRow(itemProps, reqList, null));
+  });
+  wrap.appendChild(add);
+}
+
 function buildField(name, prop, required, container) {
   var wrap = el('div', { 'class': 'field', 'data-field': name });
   wrap.appendChild(el('label', {}, labelFor(name, prop) + (required ? ' *' : '')));
@@ -194,6 +270,11 @@ function buildField(name, prop, required, container) {
     }
     wrap.appendChild(fs);
   } else if (type === 'array') {
+    if (prop.items && prop.items.type === 'object') {
+      buildTableField(name, prop, wrap);
+      container.appendChild(wrap);
+      return;
+    }
     var list = el('div', { 'data-array': name });
     wrap.appendChild(list);
     if (prop.items && prop.items.enum) {
@@ -249,6 +330,24 @@ function valueOfField(fieldEl, prop, required) {
   if (prop.type === 'array') {
     var arr = [];
     var list = fieldEl.querySelector('[data-array]');
+    if (list.getAttribute('data-kind') === 'object-array') {
+      var itemProps = prop.items.properties || {};
+      var rows = list.querySelectorAll('tbody tr');
+      for (var r = 0; r < rows.length; r++) {
+        var rowObj = {};
+        var saw = false;
+        var tds = rows[r].querySelectorAll('td[data-col]');
+        for (var t = 0; t < tds.length; t++) {
+          var colName = tds[t].getAttribute('data-col');
+          var colProp = itemProps[colName];
+          if (!colProp) { continue; }
+          var cv = scalarValueOf(tds[t], colProp);
+          if (cv !== undefined) { rowObj[colName] = cv; saw = true; }
+        }
+        if (saw) { arr.push(rowObj); }
+      }
+      return arr;
+    }
     if (list.getAttribute('data-kind') === 'enum-array') {
       var cbs = list.querySelectorAll('input[type="checkbox"]:checked');
       for (var c = 0; c < cbs.length; c++) { arr.push(cbs[c].value); }
@@ -262,12 +361,9 @@ function valueOfField(fieldEl, prop, required) {
     return arr;
   }
   if (prop.type === 'boolean') {
-    return fieldEl.querySelector('input[type="checkbox"]').checked;
+    return scalarValueOf(fieldEl, prop);
   }
-  var input = fieldEl.querySelector('input, select');
-  if (!input || input.value === '') { return undefined; }
-  if (prop.type === 'integer' || prop.type === 'number') { return Number(input.value); }
-  return input.value;
+  return scalarValueOf(fieldEl, prop);
 }
 
 function collect() {
