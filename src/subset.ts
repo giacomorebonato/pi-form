@@ -7,8 +7,11 @@
  */
 
 export interface SupportedArrayItems {
-  type: "string" | "number";
+  type: "string" | "number" | "object";
   enum?: string[];
+  /** Present when type is "object": the flat table columns. */
+  properties?: Record<string, unknown>;
+  required?: string[];
 }
 
 export type SupportedProperty =
@@ -72,6 +75,100 @@ const REJECTED_KEYWORDS = [
 
 const SCALAR_TYPES = new Set(["string", "number", "integer", "boolean"]);
 const RESERVED_PROPERTY_NAMES = new Set(["__proto__", "constructor", "prototype"]);
+
+/** Scalar constraint checks shared by object properties and table columns. */
+function checkScalarConstraints(p: Record<string, unknown>, type: string, path: string, errors: string[]): void {
+  switch (type) {
+    case "string": {
+      if ("enum" in p) {
+        checkEnum(p.enum, path, errors);
+      }
+      checkStringConstraints(p, path, errors);
+      return;
+    }
+    case "number":
+    case "integer": {
+      if ("enum" in p) {
+        errors.push(`${path}: enum is only supported on string type`);
+      }
+      checkNumericConstraints(p, path, errors);
+      return;
+    }
+    case "boolean": {
+      return;
+    }
+  }
+}
+
+/**
+ * Check a flat-object array items node (a table): scalar columns only,
+ * reserved names rejected, rejected keywords rejected, required entries
+ * must name known columns.
+ */
+function checkTableItems(items: Record<string, unknown>, path: string, errors: string[]): void {
+  checkKeywords(items, path, errors);
+  const properties = items.properties;
+  if (!isPlainObject(properties) || Object.keys(properties).length === 0) {
+    errors.push(`${path}: table items require "properties"`);
+    return;
+  }
+  for (const [name, child] of Object.entries(properties)) {
+    const childPath = `${path}.properties.${name}`;
+    if (RESERVED_PROPERTY_NAMES.has(name)) {
+      errors.push(`${childPath}: reserved property name "${name}"`);
+      continue;
+    }
+    if (!isPlainObject(child)) {
+      errors.push(`${childPath}: table cells must be scalars (string, number, integer, boolean)`);
+      continue;
+    }
+    checkKeywords(child, childPath, errors);
+    const type = child.type;
+    if (typeof type !== "string" || !SCALAR_TYPES.has(type)) {
+      errors.push(`${childPath}: table cells must be scalars (string, number, integer, boolean)`);
+      continue;
+    }
+    checkScalarConstraints(child, type, childPath, errors);
+  }
+  if ("required" in items && Array.isArray(items.required)) {
+    for (const entry of items.required) {
+      if (typeof entry === "string" && !(entry in properties)) {
+        errors.push(`${path}.required: unknown property "${entry}"`);
+      }
+    }
+  }
+}
+
+/** Structural check for a table array's `default`: an array of plain
+ * objects with known keys and primitive values of the column's JS type.
+ * Constraints are NOT checked (Zod-era parity: scalar defaults were never
+ * constraint-checked); pi-schema re-validates on submit. */
+function checkTableDefault(def: unknown, items: Record<string, unknown>, path: string, errors: string[]): void {
+  if (!Array.isArray(def)) {
+    errors.push(`${path}.default: must be an array of row objects`);
+    return;
+  }
+  const columns = (isPlainObject(items.properties) ? items.properties : {}) as Record<string, unknown>;
+  def.forEach((row, i) => {
+    if (!isPlainObject(row)) {
+      errors.push(`${path}.default.${i}: must be an object`);
+      return;
+    }
+    for (const [key, value] of Object.entries(row)) {
+      const col = columns[key];
+      const childPath = `${path}.default.${i}.${key}`;
+      if (!isPlainObject(col)) {
+        errors.push(`${childPath}: unknown table column "${key}"`);
+        continue;
+      }
+      const colType = col.type;
+      const expected = colType === "string" ? "string" : colType === "boolean" ? "boolean" : "number";
+      if (typeof value !== expected) {
+        errors.push(`${childPath}: expected ${expected}`);
+      }
+    }
+  });
+}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -139,6 +236,10 @@ function checkArrayItems(items: unknown, path: string, errors: string[]): void {
   if (hasEnum) {
     checkEnum(items.enum, path, errors);
   }
+  if (hasType && items.type === "object") {
+    checkTableItems(items, `${path}.items`, errors);
+    return;
+  }
   if (hasType && items.type !== "string" && items.type !== "number") {
     errors.push(`${path}: unsupported array items type "${String(items.type)}"`);
   }
@@ -167,18 +268,12 @@ function checkProperty(p: unknown, path: string, depth: number, errors: string[]
 
   switch (type) {
     case "string": {
-      if ("enum" in p) {
-        checkEnum(p.enum, path, errors);
-      }
-      checkStringConstraints(p, path, errors);
+      checkScalarConstraints(p, "string", path, errors);
       return;
     }
     case "number":
     case "integer": {
-      if ("enum" in p) {
-        errors.push(`${path}: enum is only supported on string type`);
-      }
-      checkNumericConstraints(p, path, errors);
+      checkScalarConstraints(p, type, path, errors);
       return;
     }
     case "boolean": {
@@ -190,6 +285,14 @@ function checkProperty(p: unknown, path: string, depth: number, errors: string[]
         return;
       }
       checkArrayItems(p.items, path, errors);
+      if (
+        isPlainObject(p.items) &&
+        p.items.type === "object" &&
+        "default" in p &&
+        p.default !== undefined
+      ) {
+        checkTableDefault(p.default, p.items, path, errors);
+      }
       return;
     }
     case "object": {

@@ -110,10 +110,10 @@ describe("checkSupportedSchema — rejects with path-qualified keyword errors", 
 });
 
 describe("checkSupportedSchema — arrays", () => {
-  it("rejects array items that are objects or arrays", () => {
+  it("rejects array items that are arrays, and tables without properties", () => {
     expect(
       checkSupportedSchema({ type: "object", properties: { list: { type: "array", items: { type: "object" } } } })
-    ).toEqual({ ok: false, errors: ['properties.list: unsupported array items type "object"'] });
+    ).toEqual({ ok: false, errors: ['properties.list.items: table items require "properties"'] });
     expect(
       checkSupportedSchema({ type: "object", properties: { list: { type: "array", items: { type: "array" } } } })
     ).toEqual({ ok: false, errors: ['properties.list: unsupported array items type "array"'] });
@@ -251,5 +251,109 @@ describe("checkSupportedSchema — property types", () => {
         },
       })
     ).toEqual({ ok: false, errors: ["properties.opts: additionalProperties must be a boolean"] });
+  });
+});
+
+describe("checkSupportedSchema — tables (arrays of objects)", () => {
+  const tableItems = {
+    type: "object",
+    properties: {
+      environment: { type: "string", enum: ["staging", "canary", "production"] },
+      go_live: { type: "string", description: "Go-live date" },
+      notify: { type: "boolean" },
+    },
+    required: ["environment"],
+  };
+
+  it("accepts an array of flat objects as a table", () => {
+    const r = checkSupportedSchema({
+      type: "object",
+      properties: { rows: { type: "array", items: tableItems } },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("accepts a table inside a nested object (fieldset)", () => {
+    const r = checkSupportedSchema({
+      type: "object",
+      properties: {
+        plan: { type: "object", properties: { rows: { type: "array", items: tableItems } } },
+      },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("rejects a nested object or array inside table cells", () => {
+    const r = checkSupportedSchema({
+      type: "object",
+      properties: {
+        rows: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { deep: { type: "object", properties: { x: { type: "string" } } } },
+          },
+        },
+      },
+    });
+    expect(r.ok).toBe(false);
+    expect((r as { errors: string[] }).errors[0]).toContain("properties.rows.items.properties.deep");
+  });
+
+  it("rejects an items object without properties", () => {
+    const r = checkSupportedSchema({
+      type: "object",
+      properties: { rows: { type: "array", items: { type: "object" } } },
+    });
+    expect(r.ok).toBe(false);
+    expect((r as { errors: string[] }).errors.join("\n")).toContain("properties.rows.items");
+  });
+
+  it("rejects reserved names as table columns", () => {
+    const r = checkSupportedSchema({
+      type: "object",
+      properties: {
+        rows: { type: "array", items: { type: "object", properties: { constructor: { type: "string" } } } },
+      },
+    });
+    expect(r.ok).toBe(false);
+    expect((r as { errors: string[] }).errors.join("\n")).toContain("constructor");
+  });
+
+  it("rejects rejected keywords inside items objects", () => {
+    const r = checkSupportedSchema({
+      type: "object",
+      properties: {
+        rows: { type: "array", items: { type: "object", properties: { a: { type: "string" } }, oneOf: [] } },
+      },
+    });
+    expect(r.ok).toBe(false);
+    expect((r as { errors: string[] }).errors.join("\n")).toContain("oneOf");
+  });
+
+  it("accepts structurally valid default rows, rejects bad ones", () => {
+    const ok = checkSupportedSchema({
+      type: "object",
+      properties: { rows: { type: "array", items: tableItems, default: [{ environment: "staging" }, {}] } },
+    });
+    expect(ok.ok).toBe(true);
+
+    const notArray = checkSupportedSchema({
+      type: "object",
+      properties: { rows: { type: "array", items: tableItems, default: { environment: "staging" } } },
+    });
+    expect(notArray.ok).toBe(false);
+
+    const unknownKey = checkSupportedSchema({
+      type: "object",
+      properties: { rows: { type: "array", items: tableItems, default: [{ oops: "x" }] } },
+    });
+    expect(unknownKey.ok).toBe(false);
+
+    const wrongType = checkSupportedSchema({
+      type: "object",
+      properties: { rows: { type: "array", items: tableItems, default: [{ notify: "yes" }] } },
+    });
+    expect(wrongType.ok).toBe(false);
   });
 });
