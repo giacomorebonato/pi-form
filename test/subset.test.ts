@@ -357,3 +357,68 @@ describe("checkSupportedSchema — tables (arrays of objects)", () => {
     expect(wrongType.ok).toBe(false);
   });
 });
+
+describe("checkSupportedSchema — date and range widgets", () => {
+  it('accepts format:"date" on strings at top level, in fieldsets, and in table cells', () => {
+    const r = checkSupportedSchema({
+      type: "object",
+      properties: {
+        when: { type: "string", format: "date" },
+        opts: { type: "object", properties: { when: { type: "string", format: "date" } } },
+        rows: { type: "array", items: { type: "object", properties: { when: { type: "string", format: "date" } } } },
+      },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects format:"date" combined with enum, pattern, minLength or maxLength', () => {
+    for (const extra of [{ enum: ["a"] }, { pattern: "a" }, { minLength: 1 }, { maxLength: 5 }]) {
+      const r = checkSupportedSchema({
+        type: "object",
+        properties: { when: { type: "string", format: "date", ...extra } },
+      });
+      expect(r.ok).toBe(false);
+      expect((r as { errors: string[] }).errors[0]).toContain("properties.when");
+    }
+  });
+
+  it('ignores format:"date" on non-strings and other format values', () => {
+    const r = checkSupportedSchema({
+      type: "object",
+      properties: {
+        n: { type: "integer", format: "date" },
+        e: { type: "string", format: "email" },
+      },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('accepts x-widget:"range" only on bounded integers', () => {
+    const ok = checkSupportedSchema({
+      type: "object",
+      properties: { certainty: { type: "integer", minimum: 0, maximum: 100, "x-widget": "range" } },
+    });
+    expect(ok.ok).toBe(true);
+  });
+
+  it('rejects x-widget:"range" on unbounded or non-integer properties', () => {
+    for (const p of [
+      { type: "integer", "x-widget": "range" },
+      { type: "integer", minimum: 0, "x-widget": "range" },
+      { type: "number", minimum: 0, maximum: 1, "x-widget": "range" },
+      { type: "string", "x-widget": "range" },
+    ]) {
+      const r = checkSupportedSchema({ type: "object", properties: { w: p } });
+      expect(r.ok).toBe(false);
+      expect((r as { errors: string[] }).errors[0]).toContain("properties.w");
+    }
+  });
+
+  it('ignores x-widget with values other than "range"', () => {
+    const r = checkSupportedSchema({
+      type: "object",
+      properties: { s: { type: "string", "x-widget": "textarea" } },
+    });
+    expect(r.ok).toBe(true);
+  });
+});

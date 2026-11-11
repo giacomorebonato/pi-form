@@ -23,6 +23,7 @@ export type SupportedProperty =
       pattern?: string;
       description?: string;
       default?: string;
+      format?: string;
     }
   | {
       type: "number" | "integer";
@@ -30,6 +31,7 @@ export type SupportedProperty =
       maximum?: number;
       description?: string;
       default?: number;
+      "x-widget"?: string;
     }
   | { type: "boolean"; description?: string; default?: boolean }
   | { type: "array"; items: SupportedArrayItems; description?: string; default?: unknown[] }
@@ -78,8 +80,19 @@ const RESERVED_PROPERTY_NAMES = new Set(["__proto__", "constructor", "prototype"
 
 /** Scalar constraint checks shared by object properties and table columns. */
 function checkScalarConstraints(p: Record<string, unknown>, type: string, path: string, errors: string[]): void {
+  if (
+    p["x-widget"] === "range" &&
+    !(type === "integer" && typeof p.minimum === "number" && typeof p.maximum === "number")
+  ) {
+    errors.push(`${path}: x-widget "range" requires an integer with minimum and maximum`);
+    return;
+  }
   switch (type) {
     case "string": {
+      if (p.format === "date" && ("enum" in p || "pattern" in p || "minLength" in p || "maxLength" in p)) {
+        errors.push(`${path}: format "date" cannot be combined with enum/pattern/minLength/maxLength`);
+        return;
+      }
       if ("enum" in p) {
         checkEnum(p.enum, path, errors);
       }
