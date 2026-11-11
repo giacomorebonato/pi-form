@@ -27,13 +27,14 @@ async function makeForm(overrides: Record<string, unknown> = {}) {
 }
 
 describe("fieldErrors", () => {
-  it("keeps errors for prototype-chain property names", () => {
-    expect(fieldErrors([{ path: ["constructor"], message: "required" }])).toEqual({
+  it("converts JSON Pointer paths to dotted keys", () => {
+    expect(fieldErrors([{ path: "/constructor", message: "required" }])).toEqual({
       constructor: "required",
     });
-    expect(fieldErrors([{ path: ["toString"], message: "bad" }])).toEqual({
-      toString: "bad",
+    expect(fieldErrors([{ path: "/rows/2/go_live", message: "expected date" }])).toEqual({
+      "rows.2.go_live": "expected date",
     });
+    expect(fieldErrors([{ path: "", message: "root" }])).toEqual({ _: "root" });
   });
 });
 

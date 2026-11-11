@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
+import { compile } from "@earendil-works/pi-schema";
+import { formats } from "@earendil-works/pi-schema/formats";
 import type { SupportedSchema } from "./subset.js";
 import { renderFormPage } from "./form-html.js";
-import { toZodSchema } from "./schema-to-zod.js";
 import type { FormPayload } from "./server-types.js";
 
 export interface StartFormOptions {
@@ -53,20 +54,27 @@ async function readBody(req: IncomingMessage): Promise<Buffer | null> {
   });
 }
 
-export function fieldErrors(issues: Array<{ path: PropertyKey[]; message: string }>): Record<string, string> {
-  const errors: Record<string, string> = {};
-  for (const issue of issues) {
-    const key = issue.path.length > 0 ? String(issue.path[0]) : "_";
-    if (!Object.hasOwn(errors, key)) {
-      errors[key] = issue.message;
+/** Convert pi-schema's JSON Pointer error paths ("/rows/2/go_live") to dotted
+ * keys ("rows.2.go_live") the renderer can resolve to a field, item or table
+ * cell. "" (the value itself) maps to "_". First error per key wins. */
+export function fieldErrors(errors: ReadonlyArray<{ path: string; message: string }>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const err of errors) {
+    const key = err.path === "" ? "_" : err.path.replace(/^\//, "").split("/").join(".");
+    if (!Object.hasOwn(out, key)) {
+      out[key] = err.message;
     }
   }
-  return errors;
+  return out;
 }
 
 export async function startForm(opts: StartFormOptions): Promise<FormHandle> {
   const token = randomBytes(32).toString("base64url");
-  const zodSchema = toZodSchema(opts.schema);
+  // The same agent-authored JSON Schema drives the renderer and validates
+  // the submission. Only the "date" format is checked; every other format
+  // stays an annotation (subset accepts date strings without other
+  // constraints, so compilation is total).
+  const validator = compile(opts.schema, { formats: { date: formats.date } });
 
   let settled = false;
   let server: Server | undefined;
@@ -160,17 +168,17 @@ export async function startForm(opts: StartFormOptions): Promise<FormHandle> {
             respond(400, { ok: false, error: "invalid JSON" });
             return;
           }
-          const outcome = zodSchema.safeParse(parsed);
-          if (!outcome.success) {
-            respond(422, { ok: false, errors: fieldErrors(outcome.error.issues) });
+          const outcome = validator.validate(parsed);
+          if (!outcome.ok) {
+            respond(422, { ok: false, errors: fieldErrors(outcome.errors) });
             return;
           }
           settled = true;
           cleanup();
-          respond(200, { ok: true, data: outcome.data });
+          respond(200, { ok: true, data: outcome.value });
           res.on("close", () => {
             closeServer();
-            resolveResult(outcome.data as Record<string, unknown>);
+            resolveResult(outcome.value as Record<string, unknown>);
           });
         })
         .catch(() => {

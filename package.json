@@ -2,13 +2,13 @@
   "name": "pi-form",
   "version": "0.1.0",
   "type": "module",
-  "description": "pi extension: agent-authored browser forms with Zod validation",
+  "description": "pi extension: agent-authored browser forms validated by pi's schema engine",
   "keywords": [
     "pi-package",
     "pi-extension",
     "agent",
     "form",
-    "zod"
+    "json-schema"
   ],
   "license": "MIT",
   "author": "Giacomo Rebonato",
@@ -31,11 +31,10 @@
       "./index.ts"
     ]
   },
-  "dependencies": {
-    "zod": "^4.0.0"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-schema": "*",
     "@earendil-works/pi-tui": "*",
     "typebox": "*"
   },
