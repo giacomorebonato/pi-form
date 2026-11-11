@@ -3,8 +3,11 @@
 A [pi](https://pi.dev) extension. When the agent needs structured input from
 you mid-run, it authors a JSON Schema for the input, pi-form renders a form
 from that schema in your **default browser**, you fill it in, the submission
-is validated with [Zod](https://zod.dev), and the validated object is returned
-to the agent so the run continues with real data.
+is validated by [pi's own schema engine](https://github.com/earendil-works/pi/tree/main/packages/schema),
+and the validated object is returned to the agent so the run continues with
+real data.
+
+![pi-form: the form renders in your browser while the CLI stays usable](assets/hero.png)
 
 ```
 agent: "I need a book title and a 1-5 rating"
@@ -64,19 +67,42 @@ Just ask, e.g.:
 The agent calls the `request_input` tool with a JSON Schema; your browser
 opens the form. Fields render from the schema (labels from `description`,
 defaults pre-filled, required fields marked). Invalid submissions show
-per-field errors from server-side Zod validation and never reach the agent.
+per-field, per-cell errors from server-side validation and never reach the
+agent.
 
-### Example schema
+## Showcase
+
+Arrays of flat objects render as an **editable table of inputs** — one row
+per item, one column per property, every cell a native control (select, date
+picker, range slider, checkbox). The agent asked for a deployment rollout
+plan and prefilled two rows via `default`:
+
+![A rollout plan form: a table with selects, native date pickers, range sliders and checkboxes, beside a still-usable pi terminal](assets/form-table.png)
 
 ```json
 {
   "type": "object",
-  "required": ["book_title", "rating"],
+  "required": ["rollout", "rows"],
   "properties": {
-    "book_title": { "type": "string", "description": "Book title", "minLength": 2 },
-    "rating": { "type": "integer", "description": "1-5", "minimum": 1, "maximum": 5 },
-    "genres": { "type": "array", "items": { "type": "string", "enum": ["scifi", "fantasy", "noir"] } },
-    "notes": { "type": "object", "properties": { "spoilery": { "type": "boolean" } } }
+    "rollout": { "type": "string", "description": "Rollout name", "minLength": 2, "default": "v2.1 launch" },
+    "rows": {
+      "type": "array",
+      "description": "Deployment rollout plan",
+      "items": {
+        "type": "object",
+        "required": ["environment", "go_live"],
+        "properties": {
+          "environment": { "type": "string", "description": "Environment", "enum": ["staging", "canary", "production"] },
+          "go_live": { "type": "string", "description": "Go-live date", "format": "date" },
+          "certainty": { "type": "integer", "description": "Certainty (%)", "minimum": 0, "maximum": 100, "x-widget": "range" },
+          "notify": { "type": "boolean", "description": "Notify team" }
+        }
+      },
+      "default": [
+        { "environment": "staging", "go_live": "2026-03-01", "certainty": 80, "notify": true },
+        { "environment": "canary", "go_live": "2026-03-04", "certainty": 50 }
+      ]
+    }
   }
 }
 ```
@@ -85,18 +111,22 @@ per-field errors from server-side Zod validation and never reach the agent.
 
 | Feature | Form rendering |
 |---|---|
-| `string` (+ `minLength`, `maxLength`, `pattern`) | text input (Zod re-validates server-side) |
+| `string` (+ `minLength`, `maxLength`, `pattern`) | text input (re-validated server-side) |
+| string `format: "date"` | native date picker, validated as `YYYY-MM-DD` |
 | `number`, `integer` (+ `minimum`, `maximum`) | number input |
+| `x-widget: "range"` (bounded `integer`) | range slider with live value readout |
 | `boolean` | checkbox |
 | string `enum` | select |
 | array of `string`/`number` | repeatable inputs |
 | array of `enum` | checkbox group |
+| array of flat objects | editable table (native control per cell) |
 | one nested `object` level | fieldset |
 | `description`, `default`, `required` | label/help text, prefill, `*` mark |
 
 Anything outside the subset — `oneOf`/`anyOf`/`allOf`, `$ref`, conditionals,
-arrays of objects, deeper nesting — is rejected with a path-qualified error the
-agent reads and fixes. `title`, `format` and unknown metadata keys are ignored.
+objects or arrays nested inside table items, deeper nesting — is rejected
+with a path-qualified error the agent reads and fixes. `title` and unknown
+metadata keys are ignored.
 
 ## Security
 
@@ -119,7 +149,12 @@ Manual check: `pi -e "$(pwd)/index.ts"` and ask the agent to use
 `request_input`.
 
 Layout: `index.ts` (extension entry, `request_input` tool) · `src/subset.ts`
-(schema subset checker) · `src/schema-to-zod.ts` (Zod conversion) ·
-`src/form-html.ts` (self-contained form page) · `src/server.ts` (localhost
-form server) · `src/server-types.ts` (shared types) · `src/open-browser.ts`
-(default-browser opener).
+(supported-schema checker) · `src/form-html.ts` (self-contained form page)
+· `src/server.ts` (localhost form server; validates with
+`@earendil-works/pi-schema`) · `src/server-types.ts` (shared types) ·
+`src/open-browser.ts` (default-browser opener).
+
+Regenerating `assets/`: start a one-off form via `startForm` with the
+showcase schema above, screenshot the page at ~900px width for
+`form-table.png`; the hero composites that shot with a terminal mock. No
+script ships — it's a manual capture.

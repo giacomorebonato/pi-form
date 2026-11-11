@@ -22,13 +22,16 @@ export default function (pi: ExtensionAPI) {
       "Provide a JSON Schema (type: object) describing the fields you need; the human fills " +
       "the form in the browser and the validated JSON is returned to you. " +
       "Supported: string, number, integer, boolean, string enums, arrays of string/number/enum, " +
-      "one level of nested object, description, default, required, min/max, minLength/maxLength/pattern.",
+      "one level of nested object, description, default, required, min/max, minLength/maxLength/pattern. " +
+      "Arrays of flat objects render as an editable table of inputs; string format \"date\" renders a native " +
+      "date picker; x-widget \"range\" on a bounded integer renders a range slider.",
     promptSnippet: "Collect structured input from the human via a browser form (request_input)",
     promptGuidelines: [
       "Use request_input when you need structured input with multiple fields, enums or validation " +
         "from the human; for a single quick question, ask in prose instead.",
       "request_input schemas must be plain JSON Schema objects: type object with string/number/integer/" +
-        "boolean/enum/array properties, at most one nesting level; oneOf/anyOf/$ref and deep nesting are rejected.",
+        "boolean/enum/array properties, at most one nesting level; oneOf/anyOf/$ref and deep nesting are rejected. " +
+        "format: \"date\" is validated server-side; x-widget is the only custom keyword honored (\"range\").",
     ],
     executionMode: "sequential",
     parameters: Type.Object({
