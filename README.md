@@ -20,7 +20,19 @@ Terminal stays usable the whole time; the footer shows the form URL and
 
 ## Install
 
-**Option A — settings.json (recommended):** add the repo path to
+**From npm (recommended):**
+
+```sh
+pi install npm:pi-form
+```
+
+**From git:**
+
+```sh
+pi install git:github.com/giacomorebonato/pi-form
+```
+
+**Option A — settings.json:** add the repo path to
 `~/.pi/agent/settings.json`:
 
 ```json
@@ -99,8 +111,8 @@ agent reads and fixes. `title`, `format` and unknown metadata keys are ignored.
 ## Development
 
 ```sh
-npm install
-npm test        # vitest, unit + live-server tests
+bun install
+bun run test    # vitest, unit + live-server tests
 ```
 
 Manual check: `pi -e "$(pwd)/index.ts"` and ask the agent to use

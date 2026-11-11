@@ -1,9 +1,28 @@
 {
   "name": "pi-form",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "pi extension: agent-authored browser forms with Zod validation",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "agent",
+    "form",
+    "zod"
+  ],
+  "license": "MIT",
+  "author": "Giacomo Rebonato",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/giacomorebonato/pi-form.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "index.ts",
+    "src/"
+  ],
   "scripts": {
     "test": "vitest run"
   },
@@ -14,6 +33,11 @@
   },
   "dependencies": {
     "zod": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
   },
   "overrides": {
     "tldts": "7.4.19"
