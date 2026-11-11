@@ -279,3 +279,20 @@ describe("renderer — dotted error paths", () => {
     expect(document.querySelector(".err")?.textContent).toBe("missing");
   });
 });
+
+describe("renderer — multi-error clear isolation", () => {
+  it("clearing one field's error leaves the other field's error intact", async () => {
+    mount({ aaa: { type: "string" }, bbb: { type: "string" } }, ["aaa", "bbb"]);
+    submitWith({ status: 422, body: { ok: false, errors: { aaa: "fix aaa", bbb: "fix bbb" } } });
+    await tick();
+    const aaaField = document.querySelector('.field[data-field="aaa"]')!;
+    const bbbField = document.querySelector('.field[data-field="bbb"]')!;
+    expect(aaaField.querySelector(".err")!.textContent).toBe("fix aaa");
+    expect(bbbField.querySelector(".err")!.textContent).toBe("fix bbb");
+    const aaaInput = aaaField.querySelector("input")!;
+    aaaInput.value = "typed";
+    aaaInput.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(aaaField.querySelector(".err")).toBeNull();
+    expect(bbbField.querySelector(".err")!.textContent).toBe("fix bbb");
+  });
+});

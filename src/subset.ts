@@ -143,9 +143,15 @@ function checkTableItems(items: Record<string, unknown>, path: string, errors: s
     }
     checkScalarConstraints(child, type, childPath, errors);
   }
-  if ("required" in items && Array.isArray(items.required)) {
+  if ("required" in items && !Array.isArray(items.required)) {
+    errors.push(`${path}.required: must be an array of strings`);
+  } else if ("required" in items) {
     for (const entry of items.required) {
-      if (typeof entry === "string" && !(entry in properties)) {
+      if (typeof entry !== "string") {
+        errors.push(`${path}.required: must be an array of strings`);
+        break;
+      }
+      if (!(entry in properties)) {
         errors.push(`${path}.required: unknown property "${entry}"`);
       }
     }

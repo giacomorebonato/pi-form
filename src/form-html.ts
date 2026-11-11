@@ -461,6 +461,14 @@ function resolveErrorTarget(key) {
   return { attach: attach, input: input };
 }
 
+function bindClearOnInput(attachEl, ctrl) {
+  if (!ctrl) { return; }
+  ctrl.addEventListener('input', function () {
+    var er = attachEl.querySelectorAll('.err');
+    for (var e2 = 0; e2 < er.length; e2++) { er[e2].remove(); }
+  }, { once: true });
+}
+
 function showErrors(errors) {
   for (var key in errors) {
     var target = resolveErrorTarget(key);
@@ -468,13 +476,7 @@ function showErrors(errors) {
       var old = target.attach.querySelectorAll('.err');
       for (var o = 0; o < old.length; o++) { old[o].remove(); }
       target.attach.appendChild(el('div', { 'class': 'err' }, errors[key]));
-      var ctrl = target.input || target.attach.querySelector('input, select');
-      if (ctrl) {
-        ctrl.addEventListener('input', function () {
-          var er = target.attach.querySelectorAll('.err');
-          for (var e2 = 0; e2 < er.length; e2++) { er[e2].remove(); }
-        }, { once: true });
-      }
+      bindClearOnInput(target.attach, target.input || target.attach.querySelector('input, select'));
     } else {
       var status = document.getElementById('pi-form-status');
       status.textContent = status.textContent

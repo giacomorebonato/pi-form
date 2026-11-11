@@ -422,3 +422,31 @@ describe("checkSupportedSchema — date and range widgets", () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe("checkSupportedSchema — table items required validation", () => {
+  const tableItems = {
+    type: "object",
+    properties: { environment: { type: "string" } },
+    required: ["environment"],
+  };
+
+  it("rejects non-array or non-string required entries in items objects", () => {
+    const notArray = checkSupportedSchema({
+      type: "object",
+      properties: { rows: { type: "array", items: { ...tableItems, required: "environment" } } },
+    });
+    expect(notArray.ok).toBe(false);
+    expect((notArray as { errors: string[] }).errors).toContain(
+      "properties.rows.items.required: must be an array of strings"
+    );
+
+    const nonString = checkSupportedSchema({
+      type: "object",
+      properties: { rows: { type: "array", items: { ...tableItems, required: [123] } } },
+    });
+    expect(nonString.ok).toBe(false);
+    expect((nonString as { errors: string[] }).errors).toContain(
+      "properties.rows.items.required: must be an array of strings"
+    );
+  });
+});
