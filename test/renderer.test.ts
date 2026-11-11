@@ -218,3 +218,64 @@ describe("renderer — table arrays", () => {
     expect(JSON.parse(calls[0].body)).toEqual({ rows: [{ notify: false }, { notify: false }] });
   });
 });
+
+describe("renderer — dotted error paths", () => {
+  const tableProp = {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        environment: { type: "string", enum: ["staging", "canary", "production"] },
+        go_live: { type: "string", format: "date" },
+      },
+      required: ["environment"],
+    },
+    default: [{ environment: "staging" }, { environment: "canary" }],
+  } as never;
+
+  it("lands rows.N.prop errors in the matching cell", async () => {
+    mount({ rows: tableProp });
+    submitWith({ status: 422, body: { ok: false, errors: { "rows.1.go_live": "expected date" } } });
+    await tick();
+    const err = document.querySelector('tbody tr:nth-child(2) td[data-col="go_live"] .err');
+    expect(err?.textContent).toBe("expected date");
+  });
+
+  it("resolves nested-object dotted keys to the inner field", async () => {
+    mount({ opts: { type: "object", properties: { note: { type: "string" } }, required: ["note"] } }, ["opts"]);
+    submitWith({ status: 422, body: { ok: false, errors: { "opts.note": "missing" } } });
+    await tick();
+    const inner = document.querySelector('.field[data-field="note"] .err');
+    expect(inner?.textContent).toBe("missing");
+  });
+
+  it("resolves scalar-array item errors to the item row", async () => {
+    mount({ tags: { type: "array", items: { type: "number" } } });
+    submitWith({ status: 422, body: { ok: false, errors: { "tags.0": "expected number" } } });
+    await tick();
+    const err = document.querySelector('[data-array="tags"] .row .err');
+    expect(err?.textContent).toBe("expected number");
+  });
+
+  it("falls back to the nearest ancestor when the row is gone", async () => {
+    mount({ rows: tableProp });
+    submitWith({ status: 422, body: { ok: false, errors: { "rows.9.environment": "missing" } } });
+    await tick();
+    const err = document.querySelector('.field[data-field="rows"] .err');
+    expect(err?.textContent).toBe("missing");
+  });
+
+  it("shows unresolvable keys in the status line", async () => {
+    mount({ rows: tableProp });
+    submitWith({ status: 422, body: { ok: false, errors: { "nope.deep": "broken" } } });
+    await tick();
+    expect(document.getElementById("pi-form-status")!.textContent).toContain("nope.deep: broken");
+  });
+
+  it("regression: plain top-level names keep working", async () => {
+    mount({ plain: { type: "string" } }, ["plain"]);
+    submitWith({ status: 422, body: { ok: false, errors: { plain: "missing" } } });
+    await tick();
+    expect(document.querySelector(".err")?.textContent).toBe("missing");
+  });
+});

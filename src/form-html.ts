@@ -379,23 +379,107 @@ function collect() {
   return data;
 }
 
-function showErrors(errors) {
-  var all = F.querySelectorAll('.field');
-  for (var name in errors) {
-    var f = null;
-    for (var i = 0; i < all.length; i++) {
-      if (all[i].getAttribute('data-field') === name) { f = all[i]; break; }
+function findByDataField(container, name) {
+  var fields = container.querySelectorAll('.field');
+  for (var i = 0; i < fields.length; i++) {
+    if (fields[i].getAttribute('data-field') === name) { return fields[i]; }
+  }
+  return null;
+}
+
+function findTdByCol(tr, col) {
+  var tds = tr.querySelectorAll('td[data-col]');
+  for (var i = 0; i < tds.length; i++) {
+    if (tds[i].getAttribute('data-col') === col) { return tds[i]; }
+  }
+  return null;
+}
+
+function isIndex(seg, len) {
+  var n = parseInt(seg, 10);
+  return String(n) === seg && n >= 0 && n < len;
+}
+
+/** Resolve one dotted error key to the element its message belongs on:
+ * a plain name → its field wrap; a.b → fieldset child; list.N → array item
+ * row; rows.N.col → table cell. Partially resolvable paths land on the
+ * deepest resolved ancestor; unresolvable paths return null so the caller
+ * can surface them in the status line. */
+function resolveErrorTarget(key) {
+  var segs = key.split('.');
+  var scope = F;
+  var attach = null;
+  var input = null;
+  for (var i = 0; i < segs.length; i++) {
+    var seg = segs[i];
+    if (!scope) { break; }
+    if (scope.tagName === 'TABLE') {
+      var trs = scope.querySelectorAll('tbody tr');
+      if (isIndex(seg, trs.length)) {
+        var tr = trs[parseInt(seg, 10)];
+        if (i === segs.length - 1) {
+          attach = tr;
+        } else {
+          var td = findTdByCol(tr, segs[i + 1]);
+          if (td) {
+            attach = td;
+            input = td.querySelector('input, select');
+          } else {
+            attach = tr;
+          }
+        }
+      }
+      break;
     }
-    if (!f) { continue; }
-    var old = f.querySelector('.err');
-    if (old) { old.remove(); }
-    f.appendChild(el('div', { 'class': 'err' }, errors[name]));
-    var inp = f.querySelector('input, select');
-    if (inp) {
-      inp.addEventListener('input', function () {
-        var e = f.querySelector('.err');
-        if (e) { e.remove(); }
-      }, { once: true });
+    var kind = scope.getAttribute('data-kind');
+    if (kind === 'value-array' || kind === 'enum-array') {
+      if (kind === 'value-array') {
+        var rws = scope.querySelectorAll('.row');
+        if (isIndex(seg, rws.length)) {
+          attach = rws[parseInt(seg, 10)];
+          input = attach.querySelector('input');
+        }
+      }
+      // enum-array: an item index has no single checkbox to point at —
+      // the error stays on the field wrap (attach as resolved so far).
+      break;
+    }
+    var f = findByDataField(scope, seg);
+    if (!f) { break; }
+    attach = f;
+    var fs = f.querySelector('fieldset');
+    var arr = f.querySelector('[data-array]');
+    if (fs) {
+      scope = fs;
+    } else if (arr) {
+      scope = arr;
+    } else {
+      input = f.querySelector('input, select');
+      break;
+    }
+  }
+  return { attach: attach, input: input };
+}
+
+function showErrors(errors) {
+  for (var key in errors) {
+    var target = resolveErrorTarget(key);
+    if (target.attach) {
+      var old = target.attach.querySelectorAll('.err');
+      for (var o = 0; o < old.length; o++) { old[o].remove(); }
+      target.attach.appendChild(el('div', { 'class': 'err' }, errors[key]));
+      var ctrl = target.input || target.attach.querySelector('input, select');
+      if (ctrl) {
+        ctrl.addEventListener('input', function () {
+          var er = target.attach.querySelectorAll('.err');
+          for (var e2 = 0; e2 < er.length; e2++) { er[e2].remove(); }
+        }, { once: true });
+      }
+    } else {
+      var status = document.getElementById('pi-form-status');
+      status.textContent = status.textContent
+        ? status.textContent + '; ' + key + ': ' + errors[key]
+        : key + ': ' + errors[key];
     }
   }
 }
